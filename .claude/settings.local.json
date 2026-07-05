@@ -6,7 +6,8 @@
       "Bash(node -e \"const s=require\\('fs'\\).readFileSync\\('game.js','utf8'\\); const n=\\(s.match\\(/\\\\\"[^\\\\\"]{60,}\\\\.\\\\\"/g\\)||[]\\).length; console.log\\('long passages ~', \\(s.match\\(/^    \\\\\"/gm\\)||[]\\).length\\); console.log\\('has passageBag:', s.includes\\('passageBag'\\)\\); console.log\\('has updateScroll:', s.includes\\('updateScroll'\\)\\); console.log\\('has dialog open:', s.includes\\('screens.results.classList.add'\\)\\);\")",
       "Bash(curl -s -o /dev/null -w \"reload index -> HTTP %{http_code}\\\\n\" http://localhost:5173/game.js)",
       "Bash(node -e ' *)",
-      "Bash(node -e \"const s=require\\('fs'\\).readFileSync\\('styles.css','utf8'\\);const o=\\(s.match\\(/{/g\\)||[]\\).length,c=\\(s.match\\(/}/g\\)||[]\\).length;console.log\\('CSS braces:',o,c,o===c?'BALANCED':'MISMATCH'\\)\")"
+      "Bash(node -e \"const s=require\\('fs'\\).readFileSync\\('styles.css','utf8'\\);const o=\\(s.match\\(/{/g\\)||[]\\).length,c=\\(s.match\\(/}/g\\)||[]\\).length;console.log\\('CSS braces:',o,c,o===c?'BALANCED':'MISMATCH'\\)\")",
+      "Bash(timeout 3 curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5500/)"
     ]
   }
 }

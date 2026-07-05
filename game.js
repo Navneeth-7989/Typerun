@@ -606,7 +606,7 @@
           S.wrongCount = Math.max(0, S.wrongCount - 1);
           if (S.wrongCount === 0) S.minWrong = Infinity;
         }
-        span.classList.remove("correct", "wrong");
+        span.classList.remove("correct", "wrong", "locked");
         if (S.wrongCount === 0) {
           el.typePanel.classList.remove("err");
           el.typeStatus.textContent = "Good — keep going.";
@@ -636,6 +636,11 @@
       S.wrongCount++;
       if (p < S.minWrong) S.minWrong = p; // remember the earliest mistake
     }
+    // While an earlier mistake is still uncorrected, the runner is frozen — so
+    // every key typed past that point is "locked": it appears in the passage but
+    // earns no ground. Flag those chars with a red glow so the freeze is felt,
+    // even when the keys themselves are technically correct.
+    if (S.wrongCount > 0 && p > S.minWrong) span.classList.add("locked");
     // Guide the player: while a mistake is uncorrected, the runner is frozen.
     el.typeStatus.textContent = S.wrongCount > 0
       ? "Wrong letter — backspace and fix it to move forward."
