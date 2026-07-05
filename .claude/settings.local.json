@@ -14,7 +14,9 @@
       "Bash(findstr /C:\"username-form\" /C:\"signout-modal\")",
       "Bash(Select-String -Pattern \"showUsernameStep|signout-modal|proceed\")",
       "Bash(echo \"auth.js startSignIn: $\\(curl -s http://127.0.0.1:5500/auth.js)",
-      "Bash(echo \"guest shows Guest: $\\(curl -s http://127.0.0.1:5500/auth.js)"
+      "Bash(echo \"guest shows Guest: $\\(curl -s http://127.0.0.1:5500/auth.js)",
+      "Bash(node --check net.js)",
+      "Bash(node --check friends.js)"
     ]
   }
 }

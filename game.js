@@ -165,6 +165,11 @@
     btnLobbyStart: $("#btn-lobby-start"),
     btnLobbyLeave: $("#btn-lobby-leave"),
     lobbyHint: $("#lobby-hint"),
+    // 1v1 challenge "waiting" popup
+    waitModal: $("#challenge-wait-modal"),
+    waitTitle: $("#challenge-wait-title"),
+    waitText: $("#challenge-wait-text"),
+    btnWaitCancel: $("#btn-challenge-wait-cancel"),
     // race
     lanes: $("#lanes"),
     passage: $("#passage"),
@@ -459,6 +464,8 @@
   /* ---------- multiplayer start ---------- */
   function enterMultiRace(room) {
     stopLobbyTips();
+    hideWaitModal();          // challenge accepted — drop the "waiting" popup
+    S.pendingChallenge = null; // already answered; nothing left to cancel
     S.mode = "multi";
     resetRaceState();
     S.room = room;
@@ -776,6 +783,8 @@
   function goMenu() {
     cancelAnimationFrame(S.rafId);
     stopLobbyTips();
+    hideWaitModal();
+    clearPendingChallenge(); // pull any still-open invite we sent
     S.phase = "menu";
     S.mode = "solo";
     S.room = null;
@@ -809,6 +818,9 @@
     S.room = room;
 
     if (room.status === "waiting") {
+      // Direct 1v1 challenge: no lobby / code — just a "waiting" popup that
+      // gives way to the countdown the instant the friend joins.
+      if (room.challenge) { renderChallengeWait(room); return; }
       renderLobby(room);
       return;
     }
@@ -907,6 +919,73 @@
     }
   }
 
+  /* ---------- 1v1 challenge "waiting" popup ---------- */
+  function showWaitModal(title, text) {
+    if (!el.waitModal) return;
+    if (title != null) el.waitTitle.textContent = title;
+    if (text != null) el.waitText.textContent = text;
+    el.waitModal.hidden = false;
+  }
+  function hideWaitModal() {
+    if (el.waitModal) el.waitModal.hidden = true;
+  }
+
+  // Challenge room, still "waiting": show the popup instead of the lobby.
+  // Host is parked here until the friend joins; the joiner only flashes it
+  // for a beat before the host's auto-start flips the room to "racing".
+  function renderChallengeWait(room) {
+    S.phase = "lobby";
+    // The friend tapped "Decline" — bail out and tell the challenger.
+    if (room.isHost && room.declinedBy && room.declinedBy.length) {
+      onChallengeDeclined();
+      return;
+    }
+    if (room.isHost) {
+      const name = S.challengeName || "your friend";
+      showWaitModal("Waiting for " + name + "…", "The race starts the moment they accept.");
+    } else {
+      showWaitModal("Challenge accepted!", "Get ready — the race is about to begin.");
+    }
+  }
+
+  function onChallengeDeclined() {
+    const name = S.challengeName || "Your friend";
+    clearPendingChallenge();
+    hideWaitModal();
+    leaveAndMenu();
+    menuToast(name + " declined the challenge.");
+  }
+
+  // Toast on the menu overlay (the in-race `toast` writes the race status line,
+  // which isn't visible once we're back on the menu).
+  let _menuToastTimer = null;
+  function menuToast(msg) {
+    const t = document.getElementById("menu-toast");
+    if (!t) return;
+    t.textContent = msg;
+    t.hidden = false;
+    t.classList.add("is-in");
+    clearTimeout(_menuToastTimer);
+    _menuToastTimer = setTimeout(() => {
+      t.classList.remove("is-in");
+      setTimeout(() => { t.hidden = true; }, 220);
+    }, 2800);
+  }
+
+  function clearPendingChallenge() {
+    if (S.pendingChallenge && S.pendingChallenge.cancel) {
+      S.pendingChallenge.cancel();
+    }
+    S.pendingChallenge = null;
+  }
+
+  // Challenger backs out before the friend answers.
+  function cancelChallengeWait() {
+    hideWaitModal();
+    clearPendingChallenge();
+    leaveAndMenu();
+  }
+
   function toast(msg) {
     el.typeStatus && (el.typeStatus.textContent = msg);
     console.log("[SPRINT]", msg);
@@ -927,16 +1006,22 @@
      The social UI (friends.js) drives races through this tiny hook so it can
      reuse the exact room flow the menu uses — no duplicate lobby logic. */
   window.SprintGame = {
-    // Host a private room, then fire a live challenge invite at the friend.
-    // The challenger lands in the normal private lobby and presses Start once
-    // the friend joins.
-    challengeFriend(friendUid) {
+    // Fire a direct 1v1 challenge: spin up a code-less challenge room, invite
+    // the friend, and show a "waiting" popup. No lobby, no Start button — the
+    // race auto-starts (net layer) the instant the friend joins.
+    challengeFriend(friendUid, friendName) {
       if (!net()) return Promise.reject(new Error("Still connecting…"));
       closeFriends();
-      return net().createPrivate(roomCbs).then(({ roomId, code }) =>
-        net().sendChallenge(friendUid, { roomId, code }));
+      S.challengeName = friendName || "your friend";
+      return net().createPrivate(roomCbs, { challenge: true }).then(({ roomId }) =>
+        net().sendChallenge(friendUid, { roomId })
+      ).then((ch) => {
+        S.pendingChallenge = ch;
+        showWaitModal("Waiting for " + S.challengeName + "…", "The race starts the moment they accept.");
+      });
     },
-    // Accept an incoming challenge by joining the challenger's room.
+    // Accept an incoming 1v1 challenge by joining the challenger's room. The
+    // host auto-starts, so the joiner drops straight into the countdown.
     acceptChallenge(roomId) {
       closeFriends();
       doJoinRoomId(roomId);
@@ -1023,6 +1108,9 @@
     el.btnLobbyStart?.addEventListener("click", () => net().hostStart());
     el.btnLobbyLeave?.addEventListener("click", leaveAndMenu);
     el.btnCopyLink?.addEventListener("click", copyInviteLink);
+
+    // 1v1 challenge "waiting" popup
+    el.btnWaitCancel?.addEventListener("click", cancelChallengeWait);
 
     // results
     el.btnAgain?.addEventListener("click", raceAgain);

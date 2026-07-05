@@ -247,9 +247,9 @@
       b.addEventListener("click", function () {
         var name = b.dataset.name || "your friend";
         b.disabled = true;
-        game().challengeFriend(b.dataset.uid).then(function () {
-          toast("Challenge sent to " + name + " — waiting in the lobby…");
-        }).catch(function () { b.disabled = false; toast("Couldn't send challenge."); });
+        game().challengeFriend(b.dataset.uid, name).catch(function () {
+          b.disabled = false; toast("Couldn't send challenge.");
+        });
       });
     });
     box.querySelectorAll(".fr-remove").forEach(function (b) {
@@ -340,9 +340,10 @@
     });
     el.modalDecline && el.modalDecline.addEventListener("click", function () {
       if (!S.challenge) return;
-      var id = S.challenge.id;
+      var c = S.challenge;
       hideChallenge();
-      net().clearChallenge(id).catch(function () {});
+      net().declineChallenge(c).catch(function () {}); // let the challenger know
+      net().clearChallenge(c.id).catch(function () {});
     });
   }
 

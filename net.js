@@ -77,17 +77,22 @@
   }
 
   /* ===================== PRIVATE ROOMS ===================== */
-  function createPrivate(cb) {
+  // opts.challenge === true → a direct 1v1 friend challenge: no shareable
+  // code, and the host auto-starts the moment the friend joins (see
+  // onRoomSnap). A normal private room keeps its code + manual Start.
+  function createPrivate(cb, opts) {
+    opts = opts || {};
     var u = me();
     var roomId = db.ref("rooms").push().key;
-    var code = randomCode();
+    var isChallenge = !!opts.challenge;
+    var code = isChallenge ? null : randomCode();
     return db.ref("rooms/" + roomId + "/meta").set({
-      status: "waiting", host: u.uid, private: true,
+      status: "waiting", host: u.uid, private: true, challenge: isChallenge,
       createdAt: TS, startAt: null, maxPlayers: MAX_PLAYERS, code: code,
     }).then(function () {
-      return db.ref("codes/" + code).set(roomId);
+      if (code) return db.ref("codes/" + code).set(roomId);
     }).then(function () {
-      return enterRoom(roomId, { isPrivate: true, isHost: true, code: code }, cb);
+      return enterRoom(roomId, { isPrivate: true, isHost: true, code: code, challenge: isChallenge }, cb);
     }).then(function () {
       return { roomId: roomId, code: code };
     });
@@ -124,6 +129,7 @@
 
         cur = {
           roomId: roomId, isPrivate: !!opts.isPrivate, isHost: !!opts.isHost,
+          challenge: !!opts.challenge, autoStarted: false,
           me: u.uid, playerRef: playerRef, code: opts.code || null,
           started: false, raceState: null, lastSend: 0, cb: cb,
           enteredAt: Date.now(), tickTimer: null,
@@ -139,6 +145,9 @@
   function buildState(val) {
     var meta = val.meta;
     var playersObj = val.players || {};
+    // A "declined" record is a transient signal a challenged friend leaves
+    // behind — never a real racer, so split it out of the roster.
+    var declinedBy = [];
     var players = Object.keys(playersObj).map(function (uid) {
       var p = playersObj[uid];
       return {
@@ -146,12 +155,16 @@
         isGuest: !!p.isGuest, progress: p.progress || 0, wpm: p.wpm || 0,
         acc: p.acc == null ? 100 : p.acc, finished: !!p.finished,
         finishTime: p.finishTime == null ? null : p.finishTime,
-        joinedAt: p.joinedAt || 0, isHost: uid === meta.host,
+        joinedAt: p.joinedAt || 0, isHost: uid === meta.host, declined: !!p.declined,
       };
+    }).filter(function (p) {
+      if (p.declined) { declinedBy.push(p.uid); return false; }
+      return true;
     }).sort(function (a, b) { return a.joinedAt - b.joinedAt; });
 
     return {
       roomId: cur.roomId, isPrivate: cur.isPrivate, isHost: cur.isHost,
+      challenge: !!(meta.challenge || cur.challenge), declinedBy: declinedBy,
       code: cur.code || meta.code || null, status: meta.status,
       passage: meta.passage || null, startAt: meta.startAt || null,
       raceStartAt: meta.raceStartAt || null, maxPlayers: meta.maxPlayers || MAX_PLAYERS,
@@ -175,7 +188,19 @@
     }
     if (!val.players || !val.players[cur.me]) return; // we were removed
     emit(state);
+    maybeAutoStartChallenge(state);
     maybeStartLocal(state);
+  }
+
+  // Direct 1v1 challenge: the host doesn't press Start — as soon as the
+  // friend joins (roster hits 2 real players) we set the shared go-live time
+  // and every client falls into the countdown on its own.
+  function maybeAutoStartChallenge(state) {
+    if (!cur || !cur.isHost || cur.autoStarted || cur.started) return;
+    if (!state.challenge || state.startAt) return;
+    if (state.players.length < 2) return;
+    cur.autoStarted = true;
+    db.ref("rooms/" + cur.roomId + "/meta").update({ startAt: serverNow() + COUNTDOWN_MS });
   }
 
   // 400ms heartbeat: refresh the lobby countdown + guarantee the start
@@ -468,13 +493,39 @@
     ref.onDisconnect().remove();
     return ref.set({
       fromUid: u.uid, fromName: u.name, roomId: data.roomId, code: data.code || null, at: TS,
-    }).then(function () { return { id: ref.key, ref: ref }; });
+    }).then(function () {
+      return {
+        id: ref.key, toUid: toUid, roomId: data.roomId,
+        // Challenger backs out before the friend answers: pull the invite.
+        cancel: function () {
+          try { ref.onDisconnect().cancel(); } catch (e) {}
+          return ref.remove().catch(function () {});
+        },
+      };
+    });
   }
 
   function clearChallenge(id) {
     var u = me();
     if (!id) return Promise.resolve();
     return db.ref("challenges/" + u.uid + "/" + id).remove().catch(function () {});
+  }
+
+  // A challenged friend says "no". We can't read the challenger's inbox, but
+  // both sides can read the room — so drop a short-lived "declined" marker in
+  // the room the challenger is sitting in. It's filtered out of the roster
+  // (buildState) and surfaces to the host as state.declinedBy.
+  function declineChallenge(c) {
+    var u = me();
+    if (!c || !c.roomId) return Promise.resolve();
+    var ref = db.ref("rooms/" + c.roomId + "/players/" + u.uid);
+    ref.onDisconnect().remove();
+    return ref.set({ declined: true, name: u.name }).then(function () {
+      setTimeout(function () {
+        try { ref.onDisconnect().cancel(); } catch (e) {}
+        ref.remove().catch(function () {});
+      }, 4000);
+    }).catch(function () {});
   }
 
   // Kick off profile + presence as soon as we know who the user is.
@@ -508,6 +559,7 @@
     watchChallenges: watchChallenges,
     sendChallenge: sendChallenge,
     clearChallenge: clearChallenge,
+    declineChallenge: declineChallenge,
     get roomId() { return cur ? cur.roomId : null; },
   };
 
