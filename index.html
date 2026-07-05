@@ -200,13 +200,25 @@
     <!-- ============ RESULTS SCREEN ============ -->
     <section id="screen-results" class="screen screen--results">
       <div class="results">
-        <div id="results-banner" class="results__banner">RACE COMPLETE</div>
-        <div id="results-place" class="results__place">1st</div>
-        <h2 id="results-title" class="results__title">Finished!</h2>
-        <div class="results__stats">
-          <div class="results__stat"><span id="res-wpm">0</span><small>WPM</small></div>
-          <div class="results__stat"><span id="res-acc">0%</span><small>Accuracy</small></div>
-          <div class="results__stat"><span id="res-time">0s</span><small>Your time</small></div>
+        <div class="results__head">
+          <div id="results-banner" class="results__banner">RACE COMPLETE</div>
+          <h2 id="results-title" class="results__title">Finished!</h2>
+        </div>
+        <div class="results__body">
+          <div class="results__left">
+            <div class="results__place-wrap">
+              <div id="results-place" class="results__place">1st</div>
+            </div>
+            <div class="results__stats">
+              <div class="results__stat"><span id="res-wpm">0</span><small>WPM</small></div>
+              <div class="results__stat"><span id="res-acc">0%</span><small>Accuracy</small></div>
+              <div class="results__stat"><span id="res-time">0s</span><small>Time</small></div>
+            </div>
+          </div>
+          <div class="results__right">
+            <div id="results-board" class="results__board"></div>
+            <p id="results-note" class="board-note" hidden></p>
+          </div>
         </div>
         <div class="results__actions">
           <button id="btn-again" class="btn btn--primary">Race again</button>

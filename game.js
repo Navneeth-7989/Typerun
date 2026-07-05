@@ -87,6 +87,8 @@
 
   const FINISH_MARGIN = 0.946; // matches CSS finish line position (right: 5.4%)
 
+  const PERSON_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0 2c-4.42 0-8 2.69-8 6v1h16v-1c0-3.31-3.58-6-8-6z"/></svg>';
+
   /* ---------- state ---------- */
   const S = {
     phase: "menu",          // menu | lobby | countdown | racing | done
@@ -155,9 +157,12 @@
       time: $("#hud-time"), progress: $("#hud-progress"),
     },
     // results
+    resultsCard: $(".results"),
     resultsPlace: $("#results-place"),
     resultsTitle: $("#results-title"),
     resultsBanner: $("#results-banner"),
+    resultsBoard: $("#results-board"),
+    resultsNote: $("#results-note"),
     resWpm: $("#res-wpm"), resAcc: $("#res-acc"), resTime: $("#res-time"),
     btnAgain: $("#btn-again"), btnMenu: $("#btn-menu"),
   };
@@ -637,6 +642,44 @@
   }
 
   /* ---------- results ---------- */
+  function racerName(r) {
+    if (r.type === "you") return user().name;
+    if (r.type === "bot") return r.name;
+    return (r.label || "Racer").replace(/\s*✓\s*$/, "").trim();
+  }
+
+  // A live leaderboard: everyone who has crossed the line by the moment YOU
+  // finished is ranked and shown; racers still on the track appear blurred as
+  // "racing…", so you never have to wait for the whole field to finish.
+  function renderLeaderboard(yourTime, yourWpm) {
+    const rows = S.racers.map((r) => {
+      let done, time, wpm;
+      if (r.type === "you") { done = true; time = yourTime; wpm = yourWpm; }
+      else if (r.type === "bot") { done = r.targetTime <= yourTime; time = r.targetTime; wpm = r.wpm; }
+      else { done = !!r.finished && r.finishTime != null && r.finishTime <= yourTime; time = r.finishTime; wpm = r.wpm; }
+      return { name: racerName(r), color: r.color, isYou: r.type === "you", done, time: time || 0, wpm: wpm || 0, progress: r.progress || 0 };
+    });
+    const settled = rows.filter((x) => x.done).sort((a, b) => a.time - b.time);
+    const pending = rows.filter((x) => !x.done).sort((a, b) => b.progress - a.progress);
+
+    let rank = 0;
+    const row = (x, blur) => {
+      rank++;
+      const meta = x.done ? `${Math.round(x.wpm)} wpm · ${x.time.toFixed(1)}s` : "racing…";
+      return `<div class="board-row${x.isYou ? " is-you" : ""}${blur ? " is-pending" : ""}">
+        <span class="board-rank">${rank}</span>
+        <span class="board-ava" style="--c:${x.color}">${PERSON_SVG}</span>
+        <span class="board-name">${escapeHtml(x.name)}${x.isYou ? " <em>you</em>" : ""}</span>
+        <span class="board-meta${x.done ? "" : " pending"}">${meta}</span>
+      </div>`;
+    };
+    el.resultsBoard.innerHTML =
+      settled.map((x) => row(x, false)).join("") + pending.map((x) => row(x, true)).join("");
+
+    el.resultsNote.hidden = pending.length === 0;
+    if (pending.length > 0) el.resultsNote.textContent = "You finished — the rest are still on the track";
+  }
+
   function endRace() {
     if (S.phase === "done") return;
     S.phase = "done";
@@ -660,6 +703,7 @@
 
     el.resultsPlace.textContent = ordinal(youPlace);
     el.resultsPlace.classList.toggle("win", won);
+    if (el.resultsCard) el.resultsCard.classList.toggle("win", won);
     el.resultsTitle.classList.remove("win", "lose");
     if (won) {
       el.resultsBanner.textContent = "★ VICTORY ★";
@@ -676,6 +720,7 @@
     el.resAcc.textContent = acc + "%";
     el.resTime.textContent = yourTime.toFixed(1) + "s";
     el.btnAgain.textContent = "Race again";
+    renderLeaderboard(yourTime, yourWpm);
     el.screens.results.classList.add("is-active");
   }
 
