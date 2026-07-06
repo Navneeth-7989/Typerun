@@ -50,10 +50,13 @@
   function quickMatch(cb) {
     var u = me();
     var newId = db.ref("rooms").push().key;
-    var now = serverNow();
     var decision = null;
 
     return db.ref("matchmaking").transaction(function (m) {
+      // Fresh clock on every attempt: under contention (many players clicking
+      // Race Now at once) transactions retry, and a stale timestamp could let
+      // a late retry join a room whose countdown has already begun.
+      var now = serverNow();
       var open = m && m.roomId && m.status === "waiting" &&
                  (m.count || 0) < MAX_PLAYERS && (m.startAt || 0) > now + COUNTDOWN_MS;
       if (open) {

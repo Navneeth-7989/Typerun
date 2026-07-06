@@ -45,6 +45,12 @@
     "The lighthouse stood alone against the storm, throwing its patient beam across the waves for ships it would never see or meet.",
     "Learning to type without looking is like learning to walk again, awkward at first, then suddenly so natural you forget you ever tried.",
     "The map is not the territory, so put down the plan now and then and let your own two feet discover what the paper left out.",
+  ];
+
+  // Number-and-symbol passages are a rare spice: roughly 1 race in 30 draws
+  // from this pool instead of the plain-prose one (see makePassage).
+  const NUMBER_CHANCE = 1 / 30;
+  const NUMBER_PASSAGES = [
     "On July 20, 1969, at 10:56 p.m., Neil Armstrong stepped onto the Moon; over 600 million people watched it live on TV.",
     "The recipe needs 2 cups of flour, 1/2 cup of sugar, 3 eggs, and exactly 350 degrees for 25 minutes -- no more, no less.",
     "\"Are you serious?\" he asked. \"We shipped 1,000 units in 48 hours, and returns were under 0.5%!\" The whole team cheered.",
@@ -225,17 +231,20 @@
   // on every client so multiplayer racers all type the same text.
   function makePassage(seed) {
     const rnd = seed != null ? mulberry32(hashSeed(String(seed))) : Math.random;
+    // Rare treat: a number-heavy race. The roll uses the same seeded rng, so
+    // every client in a multiplayer room agrees on the pool too.
+    const pool = rnd() < NUMBER_CHANCE ? NUMBER_PASSAGES : PASSAGES;
     const lengths = Object.keys(LENGTH_SENTENCES);
     const len = lengths[Math.floor(rnd() * lengths.length)];
     const n = LENGTH_SENTENCES[len];
     const parts = [];
     const used = {};
     for (let i = 0; i < n; i++) {
-      let idx = Math.floor(rnd() * PASSAGES.length);
+      let idx = Math.floor(rnd() * pool.length);
       let guard = 0;
-      while (used[idx] && guard++ < PASSAGES.length) idx = (idx + 1) % PASSAGES.length;
+      while (used[idx] && guard++ < pool.length) idx = (idx + 1) % pool.length;
       used[idx] = true;
-      parts.push(PASSAGES[idx]);
+      parts.push(pool[idx]);
     }
     return parts.join(" ");
   }
