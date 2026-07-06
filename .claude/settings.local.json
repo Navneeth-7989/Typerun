@@ -19,7 +19,12 @@
       "Bash(node --check friends.js)",
       "Bash(npx --version)",
       "Bash(node -e \"require\\('jsdom'\\)\")",
-      "Bash(node _wordlock.test.js)"
+      "Bash(node _wordlock.test.js)",
+      "Bash(where.exe msedge *)",
+      "Read(//c/Program Files \\(x86\\)/Microsoft/Edge/Application/**)",
+      "Read(//c/Program Files/Google/Chrome/Application/**)",
+      "Bash(cygpath *)",
+      "Bash('C:/Program Files \\(x86\\)/Microsoft/Edge/Application/msedge.exe' --headless --disable-gpu --hide-scrollbars --window-size=1600,900 --virtual-time-budget=4500 --screenshot=/tmp/shots/race2.png http://127.0.0.1:8321/_shot.html?s=race)"
     ]
   }
 }
