@@ -1407,6 +1407,7 @@ kbd {
 .profile-panel[hidden] { display: none; }
 .profile-card {
   position: relative; overflow-x: hidden; overflow-y: auto;
+  scrollbar-width: thin; scrollbar-color: rgba(124, 243, 255, 0.34) transparent; /* Firefox */
   width: min(780px, 94vw); min-height: min(620px, 88vh); max-height: 90vh; text-align: left;
   background:
     radial-gradient(70% 42% at 50% 0%, rgba(124, 243, 255, 0.09), transparent 62%) padding-box,
@@ -1417,11 +1418,20 @@ kbd {
   padding: 38px 38px 28px;
   animation: dialogPop 0.45s var(--spring) both;
 }
-.profile-card::-webkit-scrollbar { width: 9px; }
-.profile-card::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.03); border-radius: 8px; }
+/* Inset the scrollbar so its square ends don't poke past the card's rounded
+   corners: a transparent track margin clears the corners, and a transparent
+   border on the thumb (with padding-box clip) floats it in from the edge. */
+.profile-card::-webkit-scrollbar { width: 12px; }
+.profile-card::-webkit-scrollbar-track { background: transparent; margin: 16px 0; }
 .profile-card::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, rgba(124, 243, 255, 0.3), rgba(154, 170, 235, 0.2));
-  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(124, 243, 255, 0.32), rgba(154, 170, 235, 0.22));
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+.profile-card::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(124, 243, 255, 0.5), rgba(154, 170, 235, 0.34));
+  background-clip: padding-box;
 }
 .profile-card::before { /* flowing light along the top edge */
   content: ""; position: absolute; inset: 0 0 auto 0; height: 2px; border-radius: 2px;
@@ -1898,4 +1908,85 @@ html, body { transition: background-color 0.4s var(--ease), color 0.4s var(--eas
 [data-theme="light"] .guest-input:focus {
   background: linear-gradient(180deg, rgba(13, 148, 189, 0.08), rgba(255, 255, 255, 0.5));
   box-shadow: inset 0 2px 8px rgba(80, 110, 170, 0.12), 0 0 0 3px rgba(13, 148, 189, 0.14), 0 0 24px rgba(13, 148, 189, 0.1);
+}
+
+/* ---- auth card title (anchored on #fff → invisible on white) ---- */
+[data-theme="light"] .auth-card__title {
+  background: linear-gradient(115deg, #23214a 0%, #cf8712 40%, #e8641c 70%, #0d8fb8 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text; background-clip: text;
+}
+
+/* =========================================================
+   LIGHT · PROFILE card  (scrollbar, gold/white/green legibility)
+   ========================================================= */
+[data-theme="light"] .profile-card { scrollbar-color: rgba(13, 148, 189, 0.42) transparent; }
+[data-theme="light"] .profile-card::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(13, 148, 189, 0.42), rgba(90, 120, 200, 0.3));
+  background-clip: padding-box;
+}
+[data-theme="light"] .profile-card::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(13, 148, 189, 0.6), rgba(90, 120, 200, 0.42));
+  background-clip: padding-box;
+}
+
+/* text gradients/colors that washed out on white → deepened */
+[data-theme="light"] .profile-name {
+  background: linear-gradient(115deg, #1b2340, #0b7ea3 55%, #6f42d8);
+  -webkit-background-clip: text; background-clip: text;
+}
+[data-theme="light"] .profile-handle { color: #0b7ea3; }
+[data-theme="light"] .profile-rec--gold .profile-rec__val {
+  background: linear-gradient(115deg, #9a6600, #d9920a 45%, #e8641c);
+  -webkit-background-clip: text; background-clip: text;
+  filter: drop-shadow(0 4px 14px rgba(216, 146, 10, 0.25));
+}
+[data-theme="light"] .profile-rec--avg .profile-rec__val {
+  background: linear-gradient(115deg, #0b6d8f, #0d94bd 50%, #2b86d0);
+  -webkit-background-clip: text; background-clip: text;
+  filter: drop-shadow(0 4px 14px rgba(13, 148, 189, 0.22));
+}
+[data-theme="light"] .profile-rec--win .profile-rec__val { color: #15924e; text-shadow: none; }
+[data-theme="light"] .profile-winrate__head b { color: #c07d0a; }
+[data-theme="light"] .profile-verified {
+  color: #15924e; border-color: rgba(21, 146, 78, 0.35); background: rgba(21, 146, 78, 0.08);
+}
+
+/* faint white tile fills → slate so the cards read on a light surface */
+[data-theme="light"] .profile-chip,
+[data-theme="light"] .profile-rec,
+[data-theme="light"] .profile-race,
+[data-theme="light"] .fr-row {
+  background: linear-gradient(180deg, rgba(38, 58, 120, 0.05), rgba(38, 58, 120, 0.02));
+}
+[data-theme="light"] .profile-race__place:not(.p1):not(.p2):not(.p3) { background: rgba(38, 58, 120, 0.06); }
+[data-theme="light"] .profile-winrate__bar { background: rgba(38, 58, 120, 0.09); }
+[data-theme="light"] .profile-winrate__bar span {
+  background: linear-gradient(90deg, #e0a020, #e8641c, #e0a020);
+  background-size: 200% 100%;
+  box-shadow: 0 0 12px rgba(216, 146, 10, 0.4);
+}
+[data-theme="light"] .profile-skel {
+  background: linear-gradient(100deg, rgba(38, 58, 120, 0.05) 40%, rgba(38, 58, 120, 0.1) 50%, rgba(38, 58, 120, 0.05) 60%);
+  background-size: 220% 100%;
+}
+
+/* WPM sparkline: a solid deep-cyan line + high-contrast dots on white */
+[data-theme="light"] .spark-line { stroke: #0d94bd; filter: drop-shadow(0 3px 6px rgba(13, 148, 189, 0.3)); }
+[data-theme="light"] .spark-dot { fill: #0d94bd; stroke: #ffffff; }
+[data-theme="light"] .spark-dot.is-peak { fill: #d9920a; filter: drop-shadow(0 0 6px rgba(216, 146, 10, 0.6)); }
+
+/* =========================================================
+   LIGHT · FRIENDS panel internals
+   ========================================================= */
+[data-theme="light"] .fr-me strong,
+[data-theme="light"] .fr-count,
+[data-theme="light"] .fr-at { color: #0b7ea3; }
+[data-theme="light"] .fr-row:hover {
+  border-color: rgba(13, 148, 189, 0.4);
+  background: linear-gradient(180deg, rgba(13, 148, 189, 0.08), rgba(38, 58, 120, 0.03));
+}
+[data-theme="light"] .fr-list::-webkit-scrollbar-track { background: transparent; }
+[data-theme="light"] .fr-list::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(13, 148, 189, 0.4), rgba(90, 120, 200, 0.3));
 }

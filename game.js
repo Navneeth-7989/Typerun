@@ -71,13 +71,35 @@
 
   const LENGTH_SENTENCES = { short: 1, medium: 2, long: 3 };
 
-  /* ---------- bot templates (visual identity + skill) ---------- */
-  const BOT_TEMPLATES = [
-    { name: "Rookie", color: "#6ee7b7", baseWpm: 52, sub: "easy",   look: { skin: "#f2c9a0", hair: "#3a2b1a", pants: "#22543d" } },
-    { name: "Blaze",  color: "#7cc4ff", baseWpm: 78, sub: "medium", look: { skin: "#e8b98a", hair: "#1a1a1a", pants: "#1e3a5f" } },
-    { name: "Nova",   color: "#b79bff", baseWpm: 77, sub: "medium", look: { skin: "#d9a878", hair: "#4a2c1a", pants: "#3b2a5f" } },
-    { name: "Titan",  color: "#ff6b81", baseWpm: 93, sub: "hard",   look: { skin: "#c89060", hair: "#0f0f0f", pants: "#5f1e2a" } },
-    { name: "Comet",  color: "#ffa94d", baseWpm: 68, sub: "medium", look: { skin: "#e6b58a", hair: "#2a1a0a", pants: "#5f3a1e" } },
+  /* ---------- bots: a big name pool, difficulty tiers, look palette ----------
+     Names + looks are shuffled fresh every race (seeded by roomId, so all
+     clients still agree), and difficulties are split as evenly as possible
+     across easy / medium / hard — see botPlan() / makeBots(). */
+  const BOT_NAMES = [
+    "Blaze", "Nova", "Titan", "Comet", "Rookie", "Zephyr", "Vortex", "Falcon",
+    "Bolt", "Rocket", "Dash", "Echo", "Cipher", "Quartz", "Onyx", "Raven",
+    "Ace", "Flash", "Storm", "Phoenix", "Maverick", "Turbo", "Ghost", "Viper",
+    "Sonic", "Ember", "Frost", "Rebel", "Jet", "Karma",
+  ];
+
+  // Skill bands (WPM). One band per difficulty; the bot's actual WPM is drawn
+  // randomly within the band so no two same-tier bots feel identical.
+  const BOT_TIERS = [
+    { sub: "easy",   min: 49, max: 58 },
+    { sub: "medium", min: 72, max: 83 },
+    { sub: "hard",   min: 90, max: 99 },
+  ];
+
+  // Visual identities handed out to bots (color + skin/hair/pants).
+  const BOT_LOOKS = [
+    { color: "#6ee7b7", skin: "#f2c9a0", hair: "#3a2b1a", pants: "#22543d" },
+    { color: "#7cc4ff", skin: "#e8b98a", hair: "#1a1a1a", pants: "#1e3a5f" },
+    { color: "#b79bff", skin: "#d9a878", hair: "#4a2c1a", pants: "#3b2a5f" },
+    { color: "#ff6b81", skin: "#c89060", hair: "#0f0f0f", pants: "#5f1e2a" },
+    { color: "#ffa94d", skin: "#e6b58a", hair: "#2a1a0a", pants: "#5f3a1e" },
+    { color: "#7cf3ff", skin: "#e8c4a0", hair: "#20140a", pants: "#12414a" },
+    { color: "#ff9bb0", skin: "#f2c9a0", hair: "#4a2c1a", pants: "#5f1e3a" },
+    { color: "#a0e57c", skin: "#d9a878", hair: "#2a1a0a", pants: "#2f5f1e" },
   ];
 
   const YOU_LOOK = { skin: "#f4d0a8", hair: "#2a1c10", pants: "#5f4a1e", color: "#ffd23f" };
@@ -248,28 +270,55 @@
     return parts.join(" ");
   }
 
+  // Fisher-Yates shuffle driven by a supplied 0..1 RNG (returns a new array).
+  function shuffled(arr, rnd) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(rnd() * (i + 1));
+      const tmp = a[i]; a[i] = a[j]; a[j] = tmp;
+    }
+    return a;
+  }
+
+  // The lane plan: which name / look / difficulty each bot gets. Names and
+  // looks are shuffled fresh per race and difficulties are round-robined so
+  // easy/medium/hard stay evenly split, then their lane order is shuffled.
+  // Seeded by roomId, so the lobby preview and every client's race agree.
+  function botPlan(count, seed) {
+    const rnd = seed != null ? mulberry32(hashSeed(String(seed) + ":botnames")) : Math.random;
+    const names = shuffled(BOT_NAMES, rnd);
+    const looks = shuffled(BOT_LOOKS, rnd);
+    const tierList = [];
+    for (let i = 0; i < count; i++) tierList.push(BOT_TIERS[i % BOT_TIERS.length]);
+    const tiers = shuffled(tierList, rnd);
+    const plan = [];
+    for (let i = 0; i < count; i++) {
+      const look = looks[i % looks.length];
+      plan.push({ name: names[i % names.length], color: look.color, sub: tiers[i].sub, tier: tiers[i], look: { ...look } });
+    }
+    return plan;
+  }
+
   // Deterministic bots: each carries a targetTime (seconds to finish). With a
   // seed, every client generates identical bots and agrees on the outcome.
+  // Skill (WPM within the tier band) uses its own seeded stream so it stays
+  // independent of the name/look shuffle in botPlan.
   function makeBots(passage, count, seed) {
-    const rnd = seed != null ? mulberry32(hashSeed(String(seed) + ":bots")) : Math.random;
+    const rnd = seed != null ? mulberry32(hashSeed(String(seed) + ":botskill")) : Math.random;
     const words = passage.length / 5;
-    const bots = [];
-    for (let i = 0; i < count; i++) {
-      const t = BOT_TEMPLATES[i % BOT_TEMPLATES.length];
-      const wpm = t.baseWpm + (rnd() * 6 - 3);
-      const targetTime = (words / wpm) * 60;
-      bots.push({
+    return botPlan(count, seed).map((b, i) => {
+      const wpm = b.tier.min + rnd() * (b.tier.max - b.tier.min);
+      return {
         id: "bot" + i,
-        name: t.name,
-        color: t.color,
-        sub: t.sub,
-        look: { ...t.look, color: t.color },
+        name: b.name,
+        color: b.color,
+        sub: b.sub,
+        look: { ...b.look, color: b.color },
         wpm: Math.round(wpm),
-        targetTime,
+        targetTime: (words / wpm) * 60,
         phase: rnd() * Math.PI * 2,
-      });
-    }
-    return bots;
+      };
+    });
   }
 
   function botProgress(bot, elapsed) {
@@ -939,12 +988,12 @@
       return { name: p.name, color: look.color, isYou: p.uid === room.me };
     });
     const fill = Math.max(0, 5 - room.players.length);
+    const plan = room.isPrivate ? null : botPlan(fill, room.roomId);
     for (let i = 0; i < fill; i++) {
       if (room.isPrivate) {
         list.push({ name: "Waiting…", color: "#5c6c9c", isYou: false, pending: true });
       } else {
-        const t = BOT_TEMPLATES[i % BOT_TEMPLATES.length];
-        list.push({ name: t.name, color: t.color, isYou: false });
+        list.push({ name: plan[i].name, color: plan[i].color, isYou: false });
       }
     }
     return list;
@@ -1001,7 +1050,7 @@
       el.lobbyCount.hidden = true;
       el.btnLobbyStart.hidden = !room.isHost;
       el.lobbyHint.textContent = room.isHost
-        ? "Share the code — only real players race here, no bots."
+        ? "Share the code with friends, then start when everyone's in."
         : "The host will start the race soon.";
     } else {
       el.lobbyCount.hidden = false;
@@ -1012,11 +1061,11 @@
       const others = room.players.length - 1;
       el.lobbyHint.textContent = room.isPrivate
         ? (others > 0
-            ? `Racing ${others} real ${others === 1 ? "player" : "players"} — no bots`
-            : "Solo run — no bots in private races")
+            ? `Racing ${others} real ${others === 1 ? "player" : "players"}`
+            : "Get ready — the race is about to start!")
         : (others > 0
-            ? `Racing ${others} real ${others === 1 ? "player" : "players"} + bots`
-            : "Filling the lanes with bots…");
+            ? `Racing ${others} real ${others === 1 ? "player" : "players"}`
+            : "Race starting soon…");
     }
   }
 
