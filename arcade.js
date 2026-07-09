@@ -44,6 +44,7 @@
   var over = $("#game-over"), overBadge = $("#game-over-badge"), overTitle = $("#game-over-title"),
       overStats = $("#game-over-stats"), overBest = $("#game-over-best");
   var btnExit = $("#btn-game-exit"), btnAgain = $("#btn-game-again"), btnArcade = $("#btn-game-arcade");
+  var btnMute = $("#btn-game-mute");
 
   /* ---------------- helpers ---------------- */
   var W = 0, H = 0, dpr = 1;
@@ -65,6 +66,72 @@
   function updateIntroSmoke(arr, dt) {
     for (var i = arr.length - 1; i >= 0; i--) { var s = arr[i]; s.t += dt; s.x += s.vx * dt; s.y += s.vy * dt; s.r += 16 * dt; s.vx *= 0.99; if (s.t >= s.life) arr.splice(i, 1); }
     if (arr.length > 220) arr.splice(0, arr.length - 220);
+  }
+
+  /* ---------------- sound (procedural Web Audio SFX — no files) ---------------- */
+  var AC = null, masterGain = null, _noise = null, audioOn = true;
+  try { audioOn = localStorage.getItem("sprint_arcade_mute") !== "1"; } catch (e) {}
+  function ensureAudio() {
+    if (AC) { if (AC.state === "suspended") AC.resume(); return; }
+    try {
+      var Ctx = window.AudioContext || window.webkitAudioContext; if (!Ctx) return;
+      AC = new Ctx();
+      masterGain = AC.createGain(); masterGain.gain.value = 0.5;
+      var comp = AC.createDynamicsCompressor(); // tame overlapping blasts
+      masterGain.connect(comp); comp.connect(AC.destination);
+    } catch (e) { AC = null; }
+  }
+  function getNoise() {
+    if (_noise) return _noise;
+    var len = Math.floor(AC.sampleRate * 1.2), buf = AC.createBuffer(1, len, AC.sampleRate), d = buf.getChannelData(0);
+    for (var i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    _noise = buf; return buf;
+  }
+  // explosion / blast: filtered noise crack + a sub-bass boom
+  function sfxBoom(mag) {
+    if (!AC || !audioOn) return; mag = mag || 1; var t = AC.currentTime;
+    var src = AC.createBufferSource(); src.buffer = getNoise();
+    var lp = AC.createBiquadFilter(); lp.type = "lowpass";
+    lp.frequency.setValueAtTime(2000, t); lp.frequency.exponentialRampToValueAtTime(160, t + 0.5);
+    var g = AC.createGain(); g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.7 * mag, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+    src.connect(lp); lp.connect(g); g.connect(masterGain); src.start(t); src.stop(t + 0.66);
+    var o = AC.createOscillator(); o.type = "sine";
+    o.frequency.setValueAtTime(130, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.4);
+    var og = AC.createGain(); og.gain.setValueAtTime(0.0001, t);
+    og.gain.exponentialRampToValueAtTime(0.6 * mag, t + 0.02); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+    o.connect(og); og.connect(masterGain); o.start(t); o.stop(t + 0.55);
+  }
+  // falling-bomb whistle: descending tone
+  function sfxWhistle(delay) {
+    if (!AC || !audioOn) return; var t = AC.currentTime + (delay || 0);
+    var o = AC.createOscillator(); o.type = "triangle";
+    o.frequency.setValueAtTime(1500, t); o.frequency.exponentialRampToValueAtTime(280, t + 0.5);
+    var g = AC.createGain(); g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.12, t + 0.05); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
+    o.connect(g); g.connect(masterGain); o.start(t); o.stop(t + 0.6);
+  }
+  // defeat sting: two detuned saws sinking down + low rumble
+  function sfxGameOver() {
+    if (!AC || !audioOn) return; var t = AC.currentTime, i;
+    for (i = 0; i < 2; i++) {
+      var o = AC.createOscillator(); o.type = "sawtooth";
+      o.frequency.setValueAtTime(210 - i * 5, t); o.frequency.exponentialRampToValueAtTime(52, t + 1.1);
+      var lp = AC.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 900;
+      var g = AC.createGain(); g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.2, t + 0.08); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.3);
+      o.connect(lp); lp.connect(g); g.connect(masterGain); o.start(t); o.stop(t + 1.35);
+    }
+    var src = AC.createBufferSource(); src.buffer = getNoise();
+    var lp2 = AC.createBiquadFilter(); lp2.type = "lowpass"; lp2.frequency.value = 130;
+    var g2 = AC.createGain(); g2.gain.setValueAtTime(0.0001, t);
+    g2.gain.exponentialRampToValueAtTime(0.35, t + 0.1); g2.gain.exponentialRampToValueAtTime(0.0001, t + 1.2);
+    src.connect(lp2); lp2.connect(g2); g2.connect(masterGain); src.start(t); src.stop(t + 1.25);
+  }
+  function setMuted(m) {
+    audioOn = !m;
+    try { localStorage.setItem("sprint_arcade_mute", m ? "1" : "0"); } catch (e) {}
+    if (!m) ensureAudio();
   }
 
   function wordByLen(min, max) {
@@ -206,6 +273,7 @@
     word: wordByLen, pick: pick, rand: rand, randInt: randInt, clamp: clamp,
     burst: burst, shake: doShake, wordTag: wordTag, roundRect: roundRect,
     end: endGame,
+    sound: { boom: sfxBoom, whistle: sfxWhistle, over: sfxGameOver },
     now: function () { return performance.now(); },
   };
 
@@ -334,6 +402,7 @@
 
   /* ---------------- launch / replay / exit ---------------- */
   function launch(game) {
+    ensureAudio(); // the tile click is our gesture to unlock Web Audio
     current = game;
     clearActive(); stats = {}; particles = []; shake = 0;
     layer.innerHTML = ""; over.hidden = true; banner.hidden = true;
@@ -370,6 +439,7 @@
 
   function endGame(res) {
     stopLoop();
+    sfxGameOver(); // defeat sting as the post-game dialog pops
     var id = current.id, best = getBest(id), score = Math.round(res.score || 0);
     var isBest = score > best;
     if (isBest) setBest(id, score);
@@ -485,7 +555,11 @@
        city to defend. ~4.6s; skippable with any key/click. */
     intro: { duration: 4.6, count: 5 },
 
-    introInit: function (a) { this._introBuild(a); },
+    introInit: function (a) {
+      this._introBuild(a);
+      // a volley of falling-bomb whistles raining over the city
+      if (a.sound) for (var i = 0; i < 6; i++) a.sound.whistle(0.1 + i * 0.4 + Math.random() * 0.22);
+    },
 
     _introBuild: function (a) {
       // reuse the real city model so the look is consistent, then wipe it out
@@ -534,6 +608,8 @@
           this._renderCity(a);                              // char it in the offscreen layer
           S.booms.push({ x: b.x + b.w / 2, y: b.top, r: 4, t: 0, life: rand(0.5, 0.8), big: b.w > 80 });
           a.shake(9);
+          // throttled blasts so the cascade sounds like bombs raining across the city
+          if (a.sound && (S.lastBoomT == null || t - S.lastBoomT > 0.1)) { a.sound.boom(rand(0.5, 0.95)); S.lastBoomT = t; }
           for (var e = 0; e < 6; e++) this.smoke.push({ x: b.x + b.w / 2 + rand(-b.w / 3, b.w / 3), y: b.top, vx: rand(-12, 18), vy: -rand(26, 46), r: rand(12, 24), t: 0, life: rand(2.4, 4) });
         }
       }
@@ -780,6 +856,7 @@
         this._renderCity(a);
       }
       a.shake(20);
+      if (a.sound) a.sound.boom(1.25); // blast/fire when a bomb strikes a rooftop
       a.burst(bomb.x, bomb.y - 16, "#ffd23f", 26); a.burst(bomb.x, bomb.y - 16, "#ff8a3d", 34); a.burst(bomb.x, bomb.y - 16, "#ff5d73", 20);
       a.setStat("Hits", this.hits + " / " + this.MAX_HITS);
       a.banner(this.hits >= this.MAX_HITS ? "CITY DOWN" : "ROOFTOP HIT! 🔥", 750);
@@ -985,6 +1062,9 @@
   if (btnAgain) btnAgain.addEventListener("click", replay);
   if (btnArcade) btnArcade.addEventListener("click", toArcade);
   if (canvas) canvas.addEventListener("click", function () { if (phase === "intro") startPlay(); });
+  function reflectMute() { if (btnMute) btnMute.classList.toggle("is-muted", !audioOn); }
+  reflectMute();
+  if (btnMute) btnMute.addEventListener("click", function () { setMuted(audioOn); reflectMute(); });
 
   window.SprintArcade = { open: openHub, launch: function (id) { var g = GAMES.filter(function (x) { return x.id === id; })[0]; if (g) launch(g); } };
 })();
