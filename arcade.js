@@ -48,6 +48,7 @@
   /* ---------------- helpers ---------------- */
   var W = 0, H = 0, dpr = 1;
   var current = null, running = false, raf = 0, lastT = 0;
+  var phase = "idle", introT = 0, introTotal = 0, introCount = 5; // "idle" | "intro" | "play"
   var activeTarget = null, typedLen = 0;
   var stats = {};
   var particles = [], shake = 0;
@@ -58,6 +59,13 @@
   var clamp = function (v, a, b) { return Math.max(a, Math.min(b, v)); };
   var pick = function (arr) { return arr[Math.floor(Math.random() * arr.length)]; };
   var fmt = function (n) { return Math.round(n).toLocaleString(); };
+  var easeOutBack = function (x) { var c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+  function _hex(h) { h = h.replace("#", ""); if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2]; return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]; }
+  function mix(a, b, k) { var A = _hex(a), B = _hex(b); return "rgb(" + Math.round(A[0] + (B[0] - A[0]) * k) + "," + Math.round(A[1] + (B[1] - A[1]) * k) + "," + Math.round(A[2] + (B[2] - A[2]) * k) + ")"; }
+  function updateIntroSmoke(arr, dt) {
+    for (var i = arr.length - 1; i >= 0; i--) { var s = arr[i]; s.t += dt; s.x += s.vx * dt; s.y += s.vy * dt; s.r += 16 * dt; s.vx *= 0.99; if (s.t >= s.life) arr.splice(i, 1); }
+    if (arr.length > 220) arr.splice(0, arr.length - 220);
+  }
 
   function wordByLen(min, max) {
     var pool = [];
@@ -242,6 +250,9 @@
     if (!stage.classList.contains("is-open")) return;
     if (e.key === "Escape") { e.preventDefault(); toArcade(); return; }
 
+    // During the cinematic, any key skips straight to play.
+    if (phase === "intro") { e.preventDefault(); startPlay(); return; }
+
     // Game-over screen owns Enter/Esc.
     if (!over.hidden) { if (e.key === "Enter") { e.preventDefault(); replay(); } return; }
     if (!running) return;
@@ -261,6 +272,26 @@
     var dt = (t - lastT) / 1000; lastT = t;
     if (!(dt > 0)) dt = 0; if (dt > 0.05) dt = 0.05;
 
+    if (phase === "intro") {
+      introT += dt;
+      // light-coloured countdown ticking above the cinematic
+      var per = introTotal / introCount;
+      var n = clamp(introCount - Math.floor(introT / per), 1, introCount);
+      if (String(n) !== cdownNum.textContent) {
+        cdownNum.textContent = n;
+        cdownNum.classList.remove("is-pop"); void cdownNum.offsetWidth; cdownNum.classList.add("is-pop");
+      }
+      ctx.clearRect(0, 0, W, H);
+      ctx.save();
+      if (shake > 0.4) { ctx.translate(rand(-shake, shake), rand(-shake, shake)); shake *= 0.9; } else shake = 0;
+      if (current.introFrame) current.introFrame(ctx, api, introT, introTotal);
+      updateParticles(dt); renderParticles(ctx);
+      ctx.restore();
+      if (introT >= introTotal) { startPlay(); return; }
+      raf = requestAnimationFrame(frame);
+      return;
+    }
+
     current.update(dt, api);
     updateParticles(dt);
 
@@ -273,6 +304,17 @@
     ctx.restore();
 
     raf = requestAnimationFrame(frame);
+  }
+
+  // Transition from intro (or countdown) into live play.
+  function startPlay() {
+    phase = "play";
+    cdown.hidden = true;
+    stage.classList.remove("intro-cine");
+    particles = []; shake = 0;
+    if (current.init) current.init(api);
+    running = true; lastT = performance.now();
+    cancelAnimationFrame(raf); raf = requestAnimationFrame(frame);
   }
 
   /* ---------------- countdown → start ---------------- */
@@ -300,16 +342,31 @@
     document.body.classList.add("arcade-open");
     elTitle.textContent = game.name;
     stage.style.setProperty("--game-accent", game.color);
+    setStats({});
     resize();
-    running = false;
-    runCountdown(function () {
-      if (current.init) current.init(api);
-      running = true; lastT = performance.now(); raf = requestAnimationFrame(frame);
-    });
+
+    if (game.intro) {
+      // cinematic cold-open: the game drives introFrame() while a light
+      // countdown ticks above it, then we hand off to live play.
+      if (game.introInit) game.introInit(api);
+      introTotal = game.intro.duration || 4.5;
+      introCount = clamp(game.intro.count || Math.round(introTotal), 1, 5);
+      introT = 0; phase = "intro";
+      cdown.hidden = false; cdownNum.textContent = introCount;
+      stage.classList.add("intro-cine");
+      running = true; lastT = performance.now();
+      cancelAnimationFrame(raf); raf = requestAnimationFrame(frame);
+    } else {
+      running = false; phase = "idle";
+      runCountdown(function () {
+        if (current.init) current.init(api);
+        phase = "play"; running = true; lastT = performance.now(); raf = requestAnimationFrame(frame);
+      });
+    }
   }
   function replay() { if (current) launch(current); }
 
-  function stopLoop() { running = false; cancelAnimationFrame(raf); clearCdTimers(); }
+  function stopLoop() { running = false; phase = "idle"; cancelAnimationFrame(raf); clearCdTimers(); stage.classList.remove("intro-cine"); }
 
   function endGame(res) {
     stopLoop();
@@ -415,7 +472,142 @@
       a.setStats({ Score: 0, Defused: 0, Hits: "0 / 3" });
     },
 
-    onResize: function (a) { this._buildCity(a); if (this.jet) this.jet.y = a.H * 0.11; },
+    onResize: function (a) {
+      this._buildCity(a);
+      if (this.jet) this.jet.y = a.H * 0.11;
+      if (phase === "intro" && this._intro) this._introBuild(a);
+    },
+
+    /* ================= CINEMATIC COLD-OPEN =================
+       The B-2 sweeps in, the skyline detonates left-to-right into charred
+       husks under black smoke, and "SAVE YOUR CITY" slams in over the blaze
+       while a light countdown ticks above. Then live play hands you a fresh
+       city to defend. ~4.6s; skippable with any key/click. */
+    intro: { duration: 4.6, count: 5 },
+
+    introInit: function (a) { this._introBuild(a); },
+
+    _introBuild: function (a) {
+      // reuse the real city model so the look is consistent, then wipe it out
+      this._buildCity(a);
+      this.smoke = [];
+      this._intro = {
+        bomber: { x: -a.W * 0.25, y: a.H * 0.15 },
+        booms: [],           // expanding fireballs
+        frontX: -40,          // destruction wavefront
+        lastBoomX: -999,
+      };
+      for (var i = 0; i < this.buildings.length; i++) this.buildings[i].burning = false;
+    },
+
+    introFrame: function (c, a, t, total) {
+      var W = a.W, H = a.H, S = this._intro, i;
+      var lit = clamp(t / 0.6, 0, 1);                       // fade-in
+      var burnStart = 0.7, burnEnd = 2.9;
+      var prog = clamp((t - burnStart) / (burnEnd - burnStart), 0, 1); // 0..1 sweep
+
+      // --- sky: night deepening into a hellish red as the city burns ---
+      var heat = clamp((t - burnStart) / 1.6, 0, 1);
+      var sky = c.createLinearGradient(0, 0, 0, H);
+      sky.addColorStop(0, "#05060f");
+      sky.addColorStop(0.55, mix("#0a1030", "#2a0a12", heat));
+      sky.addColorStop(1, mix("#0b1228", "#5a1408", heat));
+      c.fillStyle = sky; c.fillRect(0, 0, W, H);
+
+      // stars, fading as smoke rolls in
+      c.globalAlpha = 0.6 * lit * (1 - heat * 0.85);
+      for (i = 0; i < this.stars.length; i++) { var st = this.stars[i]; c.fillStyle = "#dfe8ff"; c.beginPath(); c.arc(st.x, st.y, st.r, 0, 7); c.fill(); }
+      c.globalAlpha = 1;
+      // moon
+      c.save(); c.globalAlpha = (1 - heat * 0.7) * lit; c.shadowColor = "rgba(255,240,200,0.5)"; c.shadowBlur = 36;
+      c.fillStyle = "#f4ecd0"; c.beginPath(); c.arc(W * 0.82, H * 0.17, 30, 0, 7); c.fill(); c.restore();
+
+      // --- destruction wavefront ignites buildings as it passes ---
+      S.frontX = -40 + prog * (W + 80);
+      for (i = 0; i < this.buildings.length; i++) {
+        var b = this.buildings[i];
+        if (!b.burning && (b.x + b.w / 2) < S.frontX) {
+          b.burning = true;
+          b.flames = [];
+          var fn = Math.max(3, Math.round(b.w / 12));
+          for (var k = 0; k < fn; k++) b.flames.push({ ph: rand(0, 6.28), x: rand(0.08, 0.92) });
+          this._renderCity(a);                              // char it in the offscreen layer
+          S.booms.push({ x: b.x + b.w / 2, y: b.top, r: 4, t: 0, life: rand(0.5, 0.8), big: b.w > 80 });
+          a.shake(9);
+          for (var e = 0; e < 6; e++) this.smoke.push({ x: b.x + b.w / 2 + rand(-b.w / 3, b.w / 3), y: b.top, vx: rand(-12, 18), vy: -rand(26, 46), r: rand(12, 24), t: 0, life: rand(2.4, 4) });
+        }
+      }
+
+      // city (charred + intact) from the offscreen layer
+      if (this._city) c.drawImage(this._city, 0, 0, W, H);
+
+      // smoke first (behind flames), thicker over time
+      updateIntroSmoke(this.smoke, 1 / 60);
+      c.save();
+      for (i = 0; i < this.smoke.length; i++) {
+        var sm = this.smoke[i], kk = sm.t / sm.life;
+        c.globalAlpha = 0.42 * (1 - kk);
+        c.fillStyle = mix("#1a1c22", "#000000", 0.4);
+        c.beginPath(); c.arc(sm.x, sm.y, sm.r, 0, 7); c.fill();
+      }
+      c.restore(); c.globalAlpha = 1;
+
+      // flames on every burning building
+      for (i = 0; i < this.buildings.length; i++) if (this.buildings[i].burning) this._fire(c, this.buildings[i], t, a);
+
+      // ground heat glow
+      c.save(); c.globalCompositeOperation = "lighter";
+      var gg = c.createLinearGradient(0, H * 0.7, 0, H);
+      gg.addColorStop(0, "rgba(255,80,20,0)"); gg.addColorStop(1, "rgba(255,90,25," + (0.28 * heat) + ")");
+      c.fillStyle = gg; c.fillRect(0, H * 0.7, W, H * 0.3); c.restore();
+
+      // expanding fireballs
+      c.save(); c.globalCompositeOperation = "lighter";
+      for (i = S.booms.length - 1; i >= 0; i--) {
+        var bm = S.booms[i]; bm.t += 1 / 60; var bk = bm.t / bm.life;
+        if (bk >= 1) { S.booms.splice(i, 1); continue; }
+        var rr = (bm.big ? 90 : 60) * bk;
+        var fg = c.createRadialGradient(bm.x, bm.y, 1, bm.x, bm.y, rr);
+        fg.addColorStop(0, "rgba(255,255,230," + (1 - bk) + ")");
+        fg.addColorStop(0.4, "rgba(255,160,50," + (0.8 * (1 - bk)) + ")");
+        fg.addColorStop(1, "rgba(200,40,10,0)");
+        c.fillStyle = fg; c.beginPath(); c.arc(bm.x, bm.y, rr, 0, 7); c.fill();
+      }
+      c.restore();
+
+      // --- the bomber flies across, ahead of the wavefront ---
+      var bx = -W * 0.25 + (t / 2.6) * (W * 1.5);
+      if (bx < W * 1.3) this._jet(c, { x: bx, y: H * 0.15 + Math.sin(t * 2) * 5, vx: 1, bob: 0, blink: t }, t);
+
+      // --- title card: "SAVE YOUR CITY" over the blaze ---
+      var msgStart = 2.35;
+      if (t > msgStart) {
+        var m = clamp((t - msgStart) / 0.6, 0, 1), e = easeOutBack(m);
+        c.save();
+        c.textAlign = "center"; c.textBaseline = "middle";
+        c.translate(W / 2 + Math.sin(t * 30) * (1 - m) * 6, H * 0.52);
+        c.scale(0.75 + 0.25 * e, 0.75 + 0.25 * e);
+        c.globalAlpha = m;
+        // heavy glow
+        c.shadowColor = "rgba(255,120,40,0.9)"; c.shadowBlur = 34;
+        c.fillStyle = "#fff";
+        c.font = "800 " + Math.round(clamp(H * 0.1, 34, 92)) + "px 'Sora', system-ui, sans-serif";
+        c.fillText("SAVE YOUR CITY", 0, 0);
+        c.shadowBlur = 0;
+        var m2 = clamp((t - msgStart - 0.35) / 0.5, 0, 1);
+        c.globalAlpha = m2;
+        c.fillStyle = "rgba(255,205,170,0.95)";
+        c.font = "700 " + Math.round(clamp(H * 0.032, 13, 30)) + "px 'Sora', system-ui, sans-serif";
+        c.fillText("F R O M   T H E   A T T A C K", 0, clamp(H * 0.08, 34, 74));
+        c.restore();
+      }
+
+      // subtle dark vignette to frame it all
+      c.save();
+      var vg = c.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 0.85);
+      vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,0.5)");
+      c.fillStyle = vg; c.fillRect(0, 0, W, H); c.restore();
+    },
 
     /* ---- city model ---- */
     _buildCity: function (a) {
@@ -792,6 +984,7 @@
   if (btnExit) btnExit.addEventListener("click", toArcade);
   if (btnAgain) btnAgain.addEventListener("click", replay);
   if (btnArcade) btnArcade.addEventListener("click", toArcade);
+  if (canvas) canvas.addEventListener("click", function () { if (phase === "intro") startPlay(); });
 
   window.SprintArcade = { open: openHub, launch: function (id) { var g = GAMES.filter(function (x) { return x.id === id; })[0]; if (g) launch(g); } };
 })();

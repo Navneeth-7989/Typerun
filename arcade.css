@@ -194,6 +194,27 @@
 .game-over__actions { display: flex; gap: 12px; justify-content: center; margin-bottom: 14px; }
 .game-over__hint { font-size: 12px; color: var(--muted); }
 
+/* ============ CINEMATIC INTRO (cold-open) ============
+   During the intro the canvas plays the animation; the countdown floats
+   above it in a light colour with a transparent backdrop, plus a skip hint. */
+.game-stage.intro-cine .game-countdown {
+  background: transparent; backdrop-filter: none;
+  align-items: flex-start; justify-content: center; padding-top: 9vh;
+}
+.game-stage.intro-cine .game-countdown span {
+  font-size: 15vh; color: #fff;
+  text-shadow: 0 0 34px rgba(255, 255, 255, 0.55), 0 0 70px rgba(255, 140, 60, 0.5), 0 6px 24px rgba(0, 0, 0, 0.6);
+  opacity: 0.95;
+}
+.game-stage.intro-cine .game-countdown::after {
+  content: "press any key to skip";
+  position: absolute; bottom: 5vh; left: 0; right: 0; text-align: center;
+  font-family: "Sora", sans-serif; font-size: 12px; letter-spacing: 2px; text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+  animation: skipHintPulse 1.8s ease-in-out infinite;
+}
+@keyframes skipHintPulse { 50% { opacity: 0.4; } }
+
 /* ============ LIGHT THEME OVERRIDES ============ */
 [data-theme="light"] .arcade-hub { background: rgba(228, 234, 248, 0.7); }
 [data-theme="light"] .game-stage {
