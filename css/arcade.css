@@ -100,8 +100,12 @@
 }
 .game-stage.is-open { display: block; animation: dialogFade 0.3s ease both; }
 
-.game-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-.game-layer { position: absolute; inset: 0; pointer-events: none; }
+/* WebGL layer for 3D games — sits behind the transparent 2D overlay canvas,
+   which keeps drawing word tags / particles / HUD juice on top. */
+.game-gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; z-index: 1; }
+.game-gl[hidden] { display: none; }
+.game-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; z-index: 2; background: transparent; }
+.game-layer { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
 
 .game-top {
   position: absolute; top: 0; left: 0; right: 0; z-index: 3;
