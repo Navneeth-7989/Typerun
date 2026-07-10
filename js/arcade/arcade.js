@@ -147,6 +147,55 @@
       o.connect(og); og.connect(masterGain); o.start(t); o.stop(t + 0.05);
     }
   }
+  // katana slash: a fast metallic "shing" — airy noise swipe + a bright edge ring
+  function sfxSlash() {
+    if (!AC || !audioOn) return; var t = AC.currentTime;
+    var src = AC.createBufferSource(); src.buffer = getNoise();
+    var bp = AC.createBiquadFilter(); bp.type = "bandpass"; bp.Q.value = 1.5;
+    bp.frequency.setValueAtTime(1100, t); bp.frequency.exponentialRampToValueAtTime(5400, t + 0.11);
+    var g = AC.createGain(); g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.34, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+    src.connect(bp); bp.connect(g); g.connect(masterGain); src.start(t); src.stop(t + 0.22);
+    var o = AC.createOscillator(); o.type = "triangle";
+    o.frequency.setValueAtTime(2500, t); o.frequency.exponentialRampToValueAtTime(1500, t + 0.16);
+    var og = AC.createGain(); og.gain.setValueAtTime(0.0001, t);
+    og.gain.exponentialRampToValueAtTime(0.16, t + 0.008); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+    o.connect(og); og.connect(masterGain); o.start(t); o.stop(t + 0.2);
+  }
+  // crystal shatter: a glassy cluster of quick high pings + a bright noise burst
+  function sfxShatter() {
+    if (!AC || !audioOn) return; var t0 = AC.currentTime;
+    for (var i = 0; i < 5; i++) {
+      var t = t0 + i * 0.018;
+      var o = AC.createOscillator(); o.type = "triangle";
+      o.frequency.setValueAtTime(1600 + Math.random() * 2600, t);
+      var g = AC.createGain(); g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.11, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+      o.connect(g); g.connect(masterGain); o.start(t); o.stop(t + 0.14);
+    }
+    var src = AC.createBufferSource(); src.buffer = getNoise();
+    var hp = AC.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 2600;
+    var ng = AC.createGain(); ng.gain.setValueAtTime(0.14, t0); ng.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.14);
+    src.connect(hp); hp.connect(ng); ng.connect(masterGain); src.start(t0); src.stop(t0 + 0.16);
+  }
+  // perfect-focus: a deep time-warp whoosh sinking down into a rising shimmer
+  function sfxFocus() {
+    if (!AC || !audioOn) return; var t = AC.currentTime;
+    var o = AC.createOscillator(); o.type = "sawtooth";
+    o.frequency.setValueAtTime(320, t); o.frequency.exponentialRampToValueAtTime(58, t + 0.5);
+    var lp = AC.createBiquadFilter(); lp.type = "lowpass";
+    lp.frequency.setValueAtTime(1200, t); lp.frequency.exponentialRampToValueAtTime(300, t + 0.5);
+    var g = AC.createGain(); g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.3, t + 0.05); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.72);
+    o.connect(lp); lp.connect(g); g.connect(masterGain); o.start(t); o.stop(t + 0.76);
+    for (var i = 0; i < 2; i++) {
+      var s = AC.createOscillator(); s.type = "triangle";
+      s.frequency.setValueAtTime(600 + i * 5, t + 0.08); s.frequency.exponentialRampToValueAtTime(1800 + i * 24, t + 0.6);
+      var sg = AC.createGain(); sg.gain.setValueAtTime(0.0001, t + 0.08);
+      sg.gain.exponentialRampToValueAtTime(0.12, t + 0.22); sg.gain.exponentialRampToValueAtTime(0.0001, t + 0.7);
+      s.connect(sg); sg.connect(masterGain); s.start(t + 0.08); s.stop(t + 0.72);
+    }
+  }
   // defuse pop: a snappy, satisfying "pop" when a bomb is typed away
   function sfxPop() {
     if (!AC || !audioOn) return; var t = AC.currentTime;
@@ -373,7 +422,7 @@
     word: wordByLen, pick: pick, rand: rand, randInt: randInt, clamp: clamp,
     burst: burst, shake: doShake, wordTag: wordTag, roundRect: roundRect,
     end: endGame,
-    sound: { boom: sfxBoom, whistle: sfxWhistle, pop: sfxPop, over: sfxGameOver, shot: sfxShot, tick: sfxTick, hurt: sfxHurt, levelup: sfxLevelUp, combo: sfxCombo },
+    sound: { boom: sfxBoom, whistle: sfxWhistle, pop: sfxPop, slash: sfxSlash, shatter: sfxShatter, focus: sfxFocus, over: sfxGameOver, shot: sfxShot, tick: sfxTick, hurt: sfxHurt, levelup: sfxLevelUp, combo: sfxCombo },
     // 3D helpers (for is3D games)
     get THREE() { return window.THREE; },
     get renderer() { return renderer3d; },
