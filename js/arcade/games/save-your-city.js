@@ -113,13 +113,18 @@
       this.keysCorrect = 0; this.wrong = 0;
       this.elapsed = 0; this.emberT = 0; this.smokeT = 0; this._flash = 0; this.shoot = null;
       this._buildCity(a);
-      this.jet = { x: a.W * 0.5, y: a.H * 0.11, vx: 90, bob: 0, blink: 0 };
+      this.jet = { x: a.W * 0.5, y: a.H * 0.11, vx: 90, bob: 0, blink: 0, yf: 0.11, ph: 0 };
+      this.jets = [this.jet]; // a fleet grows to match the wave's simultaneous drops
       this._startLevel(1, a);
     },
 
     onResize: function (a) {
       this._buildCity(a);
-      if (this.jet) this.jet.y = a.H * 0.11;
+      if (this.jets) for (var i = 0; i < this.jets.length; i++) {
+        var jj = this.jets[i];
+        jj.y = a.H * jj.yf;
+        jj.x = clamp(jj.x, a.W * 0.14, a.W * 0.86);
+      }
       if (this._inIntro && this._intro) this._introBuild(a);
     },
 
@@ -245,8 +250,29 @@
       this.toSpawn = this.raid ? Math.max(4, Math.round(base * 0.7)) : base;
       this.bossAlive = false;
       this.spawnT = 0.9;
+      this._syncBombers(a);
       if (this.raid) this._spawnBoss(a);
       this._updateHUD(a);
+    },
+
+    // Keep one bomber in the air for every bomb this wave can drop at once, so
+    // simultaneous word-bombs each fall from their own plane. Extra bombers fly
+    // at staggered altitudes and headings for depth, and the primary jet
+    // (jets[0]) is always kept in sync with this.jet.
+    _syncBombers: function (a) {
+      var want = lvlConc(this.level);
+      while (this.jets.length < want) {
+        var idx = this.jets.length;
+        var yf = 0.11 + idx * 0.055;                 // stagger altitude for depth
+        var dir = idx % 2 === 0 ? 1 : -1;            // fan out across the sky
+        this.jets.push({
+          x: a.W * (idx % 2 === 0 ? 0.3 : 0.7),
+          y: a.H * yf, vx: dir * (78 + idx * 12),
+          bob: 0, blink: rand(0, 6), yf: yf, ph: rand(0, 6.28)
+        });
+      }
+      if (this.jets.length > want) this.jets.length = Math.max(1, want);
+      this.jet = this.jets[0];
     },
 
     _spawnBoss: function (a) {
@@ -416,11 +442,13 @@
     /* ---- loop ---- */
     update: function (dt, a) {
       this.elapsed += dt;
-      var j = this.jet;
-      j.x += j.vx * dt; j.blink += dt;
-      if (j.x < a.W * 0.14) { j.x = a.W * 0.14; j.vx = Math.abs(j.vx); }
-      if (j.x > a.W * 0.86) { j.x = a.W * 0.86; j.vx = -Math.abs(j.vx); }
-      j.bob = Math.sin(this.elapsed * 1.5) * 6;
+      for (var ji = 0; ji < this.jets.length; ji++) {
+        var j = this.jets[ji];
+        j.x += j.vx * dt; j.blink += dt;
+        if (j.x < a.W * 0.14) { j.x = a.W * 0.14; j.vx = Math.abs(j.vx); }
+        if (j.x > a.W * 0.86) { j.x = a.W * 0.86; j.vx = -Math.abs(j.vx); }
+        j.bob = Math.sin(this.elapsed * 1.5 + j.ph) * 6;
+      }
 
       // spawn this level's bombs, dropping several at once on later levels
       this.spawnT -= dt;
@@ -431,9 +459,12 @@
           var hardChance = lvlHard(this.level), word;
           if (Math.random() < hardChance) word = pick(HARD_WORDS);
           else { var len = randInt(3, Math.min(8, 3 + Math.floor(this.level / 2))); word = a.word(len, len); }
-          var px = k > 1 ? clamp(rand(50, a.W - 50), 40, a.W - 40) : clamp(j.x + rand(-16, 16), 40, a.W - 40);
+          // release each simultaneous bomb from its own bomber, so it visibly
+          // drops from a distinct plane instead of a random point in the sky
+          var jet = this.jets[s % this.jets.length];
+          var px = clamp(jet.x + rand(-14, 14), 40, a.W - 40);
           var v = lvlSpeed(this.level) * rand(0.9, 1.12);
-          this.bombs.push({ x: px, y: j.y + j.bob + 16, word: word, typedCount: 0, isActive: false, vy: v, no: 16, to: 16 });
+          this.bombs.push({ x: px, y: jet.y + jet.bob + 16, word: word, typedCount: 0, isActive: false, vy: v, no: 16, to: 16 });
           this.toSpawn--;
         }
         if (a.sound) a.sound.whistle();
@@ -593,8 +624,8 @@
       // 9) full-building fire
       for (i = 0; i < this.buildings.length; i++) if (this.buildings[i].burning) this._fire(c, this.buildings[i], t, a);
 
-      // 10) bomber
-      this._jet(c, this.jet, t);
+      // 10) bomber fleet (extra planes appear once waves drop several at once)
+      for (i = 0; i < this.jets.length; i++) this._jet(c, this.jets[i], t);
 
       // 11) bombs + word tags
       for (i = 0; i < this.bombs.length; i++) {
